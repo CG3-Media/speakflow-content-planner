@@ -5,7 +5,54 @@ require('dotenv').config();
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Auth token
+const CONTENT_TOKEN = process.env.CONTENT_TOKEN;
+
+// Cookie parser
+app.use((req, res, next) => {
+  req.cookies = {};
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    cookieHeader.split(';').forEach(cookie => {
+      const [name, value] = cookie.trim().split('=');
+      req.cookies[name] = value;
+    });
+  }
+  next();
+});
+
+// Auth route
+app.get('/auth', (req, res) => {
+  const { token } = req.query;
+  if (token === CONTENT_TOKEN) {
+    res.setHeader('Set-Cookie', `content_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000`);
+    res.redirect('/');
+  } else {
+    res.status(401).send('Invalid token');
+  }
+});
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  if (req.cookies.content_token === CONTENT_TOKEN) {
+    next();
+  } else {
+    res.send(`<!DOCTYPE html><html><head><title>Content Planner - Access Required</title>
+      <style>body{font-family:-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#fafafa;}
+      .container{text-align:center;}h1{font-size:48px;margin-bottom:16px;}p{color:#666;font-size:18px;}</style></head>
+      <body><div class="container"><h1>🔒</h1><p>Access via your personal link.</p></div></body></html>`);
+  }
+}
+
+// Health check (public)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', dbReady });
+});
+
+// Protected static files
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+app.get('/', requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Database connection - with error handling
 let pool;
@@ -60,13 +107,8 @@ async function initDB() {
   }
 }
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', dbReady });
-});
-
-// API Routes
-app.get('/api/articles', async (req, res) => {
+// Protected API Routes
+app.get('/api/articles', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.json([]);
   }
@@ -79,7 +121,7 @@ app.get('/api/articles', async (req, res) => {
   }
 });
 
-app.get('/api/articles/:id', async (req, res) => {
+app.get('/api/articles/:id', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.status(503).json({ error: 'Database not available' });
   }
@@ -94,7 +136,7 @@ app.get('/api/articles/:id', async (req, res) => {
   }
 });
 
-app.post('/api/articles', async (req, res) => {
+app.post('/api/articles', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.status(503).json({ error: 'Database not available' });
   }
@@ -126,7 +168,7 @@ app.post('/api/articles', async (req, res) => {
   }
 });
 
-app.patch('/api/articles/:id', async (req, res) => {
+app.patch('/api/articles/:id', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.status(503).json({ error: 'Database not available' });
   }
@@ -150,7 +192,7 @@ app.patch('/api/articles/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/articles/:id', async (req, res) => {
+app.delete('/api/articles/:id', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.status(503).json({ error: 'Database not available' });
   }
@@ -163,7 +205,7 @@ app.delete('/api/articles/:id', async (req, res) => {
 });
 
 // Bulk import endpoint
-app.post('/api/articles/bulk', async (req, res) => {
+app.post('/api/articles/bulk', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.status(503).json({ error: 'Database not available' });
   }
@@ -201,7 +243,7 @@ app.post('/api/articles/bulk', async (req, res) => {
 });
 
 // Stats endpoint
-app.get('/api/stats', async (req, res) => {
+app.get('/api/stats', requireAuth, async (req, res) => {
   if (!pool || !dbReady) {
     return res.json({ total: 0, high_priority: 0, medium_priority: 0, low_priority: 0 });
   }
