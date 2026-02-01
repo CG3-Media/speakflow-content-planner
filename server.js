@@ -7,43 +7,69 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+// Database connection - with error handling
+let pool;
+let dbReady = false;
+
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false }
+  });
+} else {
+  console.warn('WARNING: No DATABASE_URL set - running in memory-only mode');
+}
 
 // Initialize database
 async function initDB() {
-  const client = await pool.connect();
+  if (!pool) {
+    console.log('No database configured, skipping init');
+    return;
+  }
+  
   try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS sf_articles (
-        id SERIAL PRIMARY KEY,
-        article_id VARCHAR(10) UNIQUE NOT NULL,
-        title TEXT NOT NULL,
-        keyword VARCHAR(255),
-        intent VARCHAR(100),
-        funnel VARCHAR(50),
-        description TEXT,
-        priority VARCHAR(20),
-        word_count INTEGER,
-        category VARCHAR(100),
-        week INTEGER,
-        status VARCHAR(50) DEFAULT 'planned',
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('Database initialized');
-  } finally {
-    client.release();
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sf_articles (
+          id SERIAL PRIMARY KEY,
+          article_id VARCHAR(10) UNIQUE NOT NULL,
+          title TEXT NOT NULL,
+          keyword VARCHAR(255),
+          intent VARCHAR(100),
+          funnel VARCHAR(50),
+          description TEXT,
+          priority VARCHAR(20),
+          word_count INTEGER,
+          category VARCHAR(100),
+          week INTEGER,
+          status VARCHAR(50) DEFAULT 'planned',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log('Database initialized');
+      dbReady = true;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('Database init failed:', err.message);
+    console.log('App will still run, but database features will be unavailable');
   }
 }
 
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', dbReady });
+});
+
 // API Routes
 app.get('/api/articles', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.json([]);
+  }
   try {
     const result = await pool.query('SELECT * FROM sf_articles ORDER BY week, article_id');
     res.json(result.rows);
@@ -54,6 +80,9 @@ app.get('/api/articles', async (req, res) => {
 });
 
 app.get('/api/articles/:id', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     const result = await pool.query('SELECT * FROM sf_articles WHERE id = $1', [req.params.id]);
     if (result.rows.length === 0) {
@@ -66,6 +95,9 @@ app.get('/api/articles/:id', async (req, res) => {
 });
 
 app.post('/api/articles', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   const { article_id, title, keyword, intent, funnel, description, priority, word_count, category, week, status, notes } = req.body;
   try {
     const result = await pool.query(
@@ -95,6 +127,9 @@ app.post('/api/articles', async (req, res) => {
 });
 
 app.patch('/api/articles/:id', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   const { status, notes, week } = req.body;
   try {
     const result = await pool.query(
@@ -116,6 +151,9 @@ app.patch('/api/articles/:id', async (req, res) => {
 });
 
 app.delete('/api/articles/:id', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   try {
     await pool.query('DELETE FROM sf_articles WHERE id = $1', [req.params.id]);
     res.json({ success: true });
@@ -126,6 +164,9 @@ app.delete('/api/articles/:id', async (req, res) => {
 
 // Bulk import endpoint
 app.post('/api/articles/bulk', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.status(503).json({ error: 'Database not available' });
+  }
   const { articles } = req.body;
   const client = await pool.connect();
   try {
@@ -161,6 +202,9 @@ app.post('/api/articles/bulk', async (req, res) => {
 
 // Stats endpoint
 app.get('/api/stats', async (req, res) => {
+  if (!pool || !dbReady) {
+    return res.json({ total: 0, high_priority: 0, medium_priority: 0, low_priority: 0 });
+  }
   try {
     const result = await pool.query(`
       SELECT 
@@ -182,8 +226,9 @@ app.get('/api/stats', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-initDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+// Start server (don't wait for DB)
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  // Init DB in background
+  initDB().catch(err => console.error('DB init error:', err.message));
 });
