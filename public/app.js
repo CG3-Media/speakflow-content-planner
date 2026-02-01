@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadArticles() {
   try {
-    const response = await fetch('/api/articles');
+    const response = await fetch('/api/articles', { credentials: 'same-origin' });
     const data = await response.json();
     if (data.length === 0) {
       // Seed from static data if empty
@@ -92,7 +92,7 @@ function populateCategoryFilter() {
 
 async function updateStats() {
   try {
-    const response = await fetch('/api/stats');
+    const response = await fetch('/api/stats', { credentials: 'same-origin' });
     const stats = await response.json();
     document.getElementById('total-count').textContent = stats.total;
     document.getElementById('high-count').textContent = stats.high_priority;
