@@ -2,24 +2,6 @@
 let articles = [];
 let filteredArticles = [];
 
-// Category colors for UI
-const categoryColors = {
-  "Hardware Integrations": { bg: "bg-blue-100", text: "text-blue-800", border: "border-blue-200" },
-  "Hardware Comparisons": { bg: "bg-indigo-100", text: "text-indigo-800", border: "border-indigo-200" },
-  "Software Comparisons": { bg: "bg-purple-100", text: "text-purple-800", border: "border-purple-200" },
-  "Platform Guides": { bg: "bg-pink-100", text: "text-pink-800", border: "border-pink-200" },
-  "Industry Guides": { bg: "bg-orange-100", text: "text-orange-800", border: "border-orange-200" },
-  "Skills & Techniques": { bg: "bg-green-100", text: "text-green-800", border: "border-green-200" },
-  "Script Writing": { bg: "bg-yellow-100", text: "text-yellow-800", border: "border-yellow-200" },
-  "Production & Setup": { bg: "bg-red-100", text: "text-red-800", border: "border-red-200" }
-};
-
-const priorityColors = {
-  "High": { bg: "bg-red-100", text: "text-red-800" },
-  "Medium": { bg: "bg-yellow-100", text: "text-yellow-800" },
-  "Low": { bg: "bg-green-100", text: "text-green-800" }
-};
-
 const statusColors = {
   "planned": { bg: "bg-gray-100", text: "text-gray-800" },
   "in_progress": { bg: "bg-blue-100", text: "text-blue-800" },
