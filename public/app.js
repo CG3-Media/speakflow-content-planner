@@ -50,7 +50,7 @@ async function loadArticles() {
     if (data.length === 0) {
       // Seed from static data if empty
       await seedArticles();
-      const response2 = await fetch('/api/articles');
+      const response2 = await fetch('/api/articles', { credentials: 'same-origin' });
       articles = await response2.json();
     } else {
       articles = data;
@@ -72,6 +72,7 @@ async function seedArticles() {
     await fetch('/api/articles/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ articles: staticArticles })
     });
   } catch (err) {
